@@ -1,0 +1,923 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mario Love Adventure 💙</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:20px 12px;background:linear-gradient(145deg,#101b48,#283d80 55%,#526bb0);font-family:Tahoma,Arial,sans-serif;color:#fff;text-align:center}
+h1{margin:8px 0;color:#ffe6f2;font-size:clamp(23px,4vw,34px);text-shadow:0 3px 0 #9b4775}
+.sub{margin:8px 0 18px;color:#e5edff}
+.shell{max-width:1000px;margin:auto;padding:14px;background:linear-gradient(145deg,#172554,#263b78);border:1px solid #7891d5;border-radius:22px;box-shadow:0 18px 45px #07102e99}
+.stats{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:4px 5px 12px;font-size:17px}
+canvas{display:block;width:100%;height:auto;border-radius:14px;background:#9cddff;box-shadow:inset 0 0 0 2px #ffffff55}
+#message{min-height:28px;margin:12px 0 4px;color:#ffe2f0;font-weight:bold}
+button{border:0;border-radius:14px;padding:11px 20px;margin:5px;background:#ff70aa;color:white;font-size:16px;font-weight:bold;cursor:pointer;box-shadow:0 4px 0 #b83e78}
+button:active{transform:translateY(3px);box-shadow:0 1px 0 #b83e78}
+.help{line-height:1.9;color:#e6edff;font-size:14px;margin:14px 0 4px}
+.touch{display:flex;justify-content:center;gap:12px;margin-top:10px;direction:ltr}
+.touch button{min-width:64px;font-size:22px;touch-action:none}
+@media(max-width:550px){body{padding:12px 6px}.shell{padding:8px}.stats{font-size:14px}}
+</style>
+</head>
+<body>
+<h1>💗 Mario Love Adventure 💗</h1>
+<p class="sub">مغامرة الثنائي الذي لا يفترق — اجمعا النجوم معًا!</p>
+<div class="shell">
+  <div class="stats">
+    <span>⭐ النقاط: <b id="score">0</b></span>
+    <span>💗 المحاولات: <b id="lives">3</b></span>
+    <span>🏁 المستوى: <b id="level">1</b>/3</span>
+  </div>
+  <canvas id="game" width="960" height="540"></canvas>
+  <p id="message">تحركا معًا مع قطتكما الصغيرة 🐱، وتجنبا الأعداء واجمعا النجوم ✨</p>
+  <button onclick="restartGame()">إعادة اللعب ↻</button>
+  <button id="musicBtn" onclick="toggleMusic()">🎵 تشغيل الموسيقى</button>
+</div>
+<div class="help">
+  <div>التحرك: ← → أو A و D</div>
+  <div>القفز: Space أو ↑</div>
+  <div>على الهاتف: استعملي الأزرار أسفل اللعبة</div>
+</div>
+<div class="touch">
+  <button id="leftBtn">⬅</button>
+  <button id="jumpBtn">⬆</button>
+  <button id="rightBtn">➡</button>
+</div>
+
+<script>
+const BARCA_LOGO = "data:image/webp;base64,UklGRioOAABXRUJQVlA4IB4OAADwOACdASp4AJEAPnk0lkekoqKhLBPMUJAPCWwA1PyTxMfa+bHWf7N/Xf1F/XuV2pjzDeY/+V/d/a7/iPUX+fP+T7gfjO+o/zGfyT/C/sX7vX+L/ZX3RegB/O/931lvok/uV6cPswf1//jfuR7VX//1jvrh22f3rw98SvoX3B5qUR35B9yP2f919FO9n4P6gXrr/G/mHwUgB/0H+h/6r+0+M1/dehXzVe4B+pvGI";
+const REAL_LOGO = "data:image/webp;base64,UklGRpoVAABXRUJQVlA4II4VAAAQSQCdASpyAJYAPnEukUYkoqGhMzqtOJAOCWwAz5h3Q3fGeZ3Uv7B/Xv1T/Z/ar05c3/UB73vLn/H+6r4Ceoz89/+D3BP1X/5Hpe+pP9ufUN+1X7ce8B/qvU5/gvyA+Af+lf5///+tl7DXoIfuX6bX7lfCJ/aP+N+3fwI/sp/3/YA/+ftpcCP5fu/7+F4j+Wf4f7ccpl6P79/vPMfvT+S+oR+Rf1D/W70DbL0AvZ";
+
+
+// ===== الموسيقى والمؤثرات الصوتية (بدون الحاجة إلى ملفات MP3) =====
+let audioCtx = null;
+let masterGain = null;
+let musicTimer = null;
+let musicOn = false;
+let musicStep = 0;
+
+function prepareAudio() {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return false;
+    audioCtx = new AudioContextClass();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.22;
+    masterGain.connect(audioCtx.destination);
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return true;
+}
+
+function tone(freq, duration, type="sine", volume=0.25, endFreq=null) {
+  if (!prepareAudio()) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, now);
+  if (endFreq) osc.frequency.exponentialRampToValueAtTime(Math.max(1, endFreq), now + duration);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), now + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start(now);
+  osc.stop(now + duration + 0.03);
+}
+
+
+function playCatMeow() {
+  if (!prepareAudio()) return;
+  const now = audioCtx.currentTime;
+
+  // Two soft, slightly detuned harmonics with a rising-then-falling pitch,
+  // closer to a little "mii-ow" than a notification beep.
+  [1, 2, 3].forEach((harmonic, index) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "triangle";
+    const start = 520 * harmonic;
+    osc.frequency.setValueAtTime(start, now);
+    osc.frequency.linearRampToValueAtTime(820 * harmonic, now + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(390 * harmonic, now + 0.38);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime([0.12, 0.045, 0.018][index], now + 0.045);
+    gain.gain.setValueAtTime([0.12, 0.045, 0.018][index], now + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.40);
+    osc.connect(gain);
+    gain.connect(masterGain);
+    osc.start(now);
+    osc.stop(now + 0.43);
+  });
+}
+
+function playSound(name) {
+  if (!prepareAudio()) return;
+  if (name === "jump") {
+    tone(330, 0.13, "square", 0.12, 620);
+  } else if (name === "star") {
+    tone(660, 0.12, "sine", 0.18);
+    setTimeout(() => tone(880, 0.18, "sine", 0.16), 90);
+    setTimeout(() => tone(1100, 0.22, "sine", 0.13), 180);
+  } else if (name === "fall") {
+    tone(420, 0.48, "sawtooth", 0.10, 95);
+  } else if (name === "lose") {
+    tone(300, 0.22, "triangle", 0.14, 210);
+    setTimeout(() => tone(190, 0.35, "triangle", 0.12, 110), 180);
+  } else if (name === "meow") {
+    playCatMeow();
+  } else if (name === "stomp") {
+    tone(260, 0.10, "square", 0.13, 130);
+  } else if (name === "hit") {
+    tone(180, 0.24, "sawtooth", 0.12, 70);
+  } else if (name === "level") {
+    [523, 659, 784].forEach((f, i) =>
+      setTimeout(() => tone(f, 0.22, "triangle", 0.13), i * 120)
+    );
+  } else if (name === "win") {
+    [523, 659, 784, 1047].forEach((f, i) =>
+      setTimeout(() => tone(f, 0.28, "sine", 0.16), i * 150)
+    );
+  }
+}
+
+const melody = [523, 659, 784, 659, 587, 698, 880, 698,
+                523, 659, 784, 988, 880, 784, 659, 587];
+
+function musicBeat() {
+  if (!musicOn || !prepareAudio()) return;
+  const note = melody[musicStep % melody.length];
+  tone(note, 0.22, "sine", 0.055);
+  if (musicStep % 4 === 0) tone(note / 2, 0.35, "triangle", 0.035);
+  musicStep++;
+}
+
+function startMusic() {
+  if (!prepareAudio()) return;
+  if (musicTimer) clearInterval(musicTimer);
+  musicOn = true;
+  musicStep = 0;
+  musicBeat();
+  musicTimer = setInterval(musicBeat, 270);
+  const btn = document.getElementById("musicBtn");
+  if (btn) btn.textContent = "🔇 إيقاف الموسيقى";
+}
+
+function stopMusic() {
+  musicOn = false;
+  if (musicTimer) clearInterval(musicTimer);
+  musicTimer = null;
+  const btn = document.getElementById("musicBtn");
+  if (btn) btn.textContent = "🎵 تشغيل الموسيقى";
+}
+
+function toggleMusic() {
+  if (musicOn) stopMusic();
+  else startMusic();
+}
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const livesEl = document.getElementById("lives");
+const messageEl = document.getElementById("message");
+
+const worldWidth = 3600;
+const gravity = 0.62;
+const jumpPower = -14;
+let camera = 0, score = 0, lives = 3, ended = false, won = false, tick = 0, level = 1;
+const levelEl = document.getElementById("level");
+
+const keys = {left:false,right:false,jump:false};
+const player = {
+    x:55,y:330,width:118,height:82,
+    speed:4.2,vy:0,grounded:false,rotation:0
+};
+
+let particles = [];
+const cat = { x: 8, y: 0, bob: 0 };
+let falling = false;
+let fallTimer = 0;
+
+const barcaImg = new Image();
+const realImg = new Image();
+barcaImg.src = BARCA_LOGO;
+realImg.src = REAL_LOGO;
+
+let platforms = [
+ {x:0,y:455,w:650,h:85},{x:730,y:455,w:510,h:85},
+ {x:1320,y:455,w:550,h:85},{x:1950,y:455,w:510,h:85},
+ {x:2540,y:455,w:500,h:85},{x:3120,y:455,w:480,h:85},
+ {x:240,y:365,w:150,h:18},{x:490,y:300,w:135,h:18},
+ {x:820,y:365,w:145,h:18},{x:1080,y:300,w:135,h:18},
+ {x:1430,y:365,w:150,h:18},{x:1690,y:300,w:135,h:18},
+ {x:2040,y:365,w:150,h:18},{x:2300,y:300,w:135,h:18},
+ {x:2630,y:365,w:150,h:18},{x:2900,y:300,w:135,h:18},
+ {x:3260,y:365,w:150,h:18}
+];
+
+let stars = [];
+function makeStars(){
+ stars = [[280,325],[535,260],[875,325],[1125,260],
+ [1485,325],[1735,260],[2095,325],[2345,260],
+ [2685,325],[2945,260],[3315,325],[3470,405]]
+ .map(([x,y])=>({x,y,taken:false}));
+}
+makeStars();
+
+// ===== الأعداء والمستويات =====
+let enemies = [];
+
+function buildLevel() {
+  // كل مستوى يغيّر توزيع المنصات وسرعة الأعداء.
+  const base = [
+    {x:0,y:455,w:650,h:85},{x:730,y:455,w:510,h:85},
+    {x:1320,y:455,w:550,h:85},{x:1950,y:455,w:510,h:85},
+    {x:2540,y:455,w:500,h:85},{x:3120,y:455,w:480,h:85},
+    {x:240,y:365,w:150,h:18},{x:490,y:300,w:135,h:18},
+    {x:820,y:365,w:145,h:18},{x:1080,y:300,w:135,h:18},
+    {x:1430,y:365,w:150,h:18},{x:1690,y:300,w:135,h:18},
+    {x:2040,y:365,w:150,h:18},{x:2300,y:300,w:135,h:18},
+    {x:2630,y:365,w:150,h:18},{x:2900,y:300,w:135,h:18},
+    {x:3260,y:365,w:150,h:18}
+  ];
+  platforms = base.map(p => ({...p}));
+
+  if (level === 2) {
+    platforms[7].y = 285;
+    platforms[9].y = 280;
+    platforms[11].y = 285;
+    platforms[13].y = 275;
+    platforms[15].y = 280;
+  } else if (level === 3) {
+    platforms[6].y = 350;
+    platforms[7].y = 270;
+    platforms[8].y = 350;
+    platforms[9].y = 265;
+    platforms[10].y = 350;
+    platforms[11].y = 260;
+    platforms[12].y = 350;
+    platforms[13].y = 255;
+    platforms[14].y = 350;
+    platforms[15].y = 260;
+  }
+
+  const positions = level === 1 ? [560, 990, 1580, 2180, 2780, 3370]
+    : level === 2 ? [390, 900, 1510, 2110, 2700, 3300]
+    : [330, 760, 1390, 2010, 2600, 3230];
+
+  enemies = positions.map((x, i) => {
+    const ground = platforms
+      .filter(p => x + 38 > p.x && x < p.x + p.w)
+      .sort((a, b) => a.y - b.y)[0];
+    return {
+    x, startX: Math.max(0, x - (level === 3 ? 85 : 65)),
+    endX: Math.min(worldWidth - 45, x + (level === 3 ? 85 : 65)),
+    y: (ground ? ground.y : 455) - 34, w: 38, h: 34,
+    speed: (level === 1 ? 1.05 : level === 2 ? 1.45 : 1.9) * (i % 2 ? -1 : 1),
+    alive: true
+  };
+  });
+}
+
+function drawEnemies() {
+  enemies.forEach(e => {
+    if (!e.alive) return;
+    const x = e.x - camera;
+    if (x < -50 || x > canvas.width + 50) return;
+    // عدو كرتوني صغير
+    ctx.save();
+    ctx.translate(x, e.y);
+    ellipse(19, 31, 20, 5, "#00000022");
+    rounded(1, 8, 36, 25, 11, level === 3 ? "#7446b8" : "#e85b68");
+    circ(11, 17, 4, "white");
+    circ(26, 17, 4, "white");
+    circ(12, 18, 1.8, "#20203a");
+    circ(27, 18, 1.8, "#20203a");
+    line(13, 27, 24, 27, "#722b42", 2);
+    circ(7, 7, 5, "#ffb2bd");
+    circ(29, 7, 5, "#ffb2bd");
+    ctx.restore();
+  });
+}
+
+function updateEnemies() {
+  enemies.forEach(e => {
+    if (!e.alive) return;
+    e.x += e.speed;
+    if (e.x < e.startX || e.x + e.w > e.endX) e.speed *= -1;
+
+    const overlaps = player.x + player.width > e.x &&
+      player.x < e.x + e.w &&
+      player.y + player.height > e.y + 8 &&
+      player.y < e.y + e.h;
+
+    if (overlaps) {
+      const playerBottomBefore = player.y + player.height - player.vy;
+      if (player.vy > 1 && playerBottomBefore <= e.y + 13) {
+        e.alive = false;
+        player.vy = -9;
+        score += 20;
+        scoreEl.textContent = score;
+        playSound("stomp");
+        spawnHearts(e.x + 18, e.y + 5);
+      } else {
+        e.alive = false;
+        playSound("hit");
+        loseLife();
+      }
+    }
+  });
+}
+
+function nextLevel() {
+  if (level < 3) {
+    level++;
+    levelEl.textContent = level;
+    player.x = 55;
+    player.y = 330;
+    player.vy = 0;
+    player.grounded = false;
+    player.rotation = 0;
+    cat.x = Math.max(0, player.x - 42);
+    camera = 0;
+    falling = false;
+    fallTimer = 0;
+    particles = [];
+    buildLevel();
+    makeStars();
+    messageEl.textContent = "🎮 أحسنتما! بدأ المستوى " + level + " — الأعداء أسرع الآن!";
+    playSound("level");
+  } else {
+    won = true;
+    messageEl.textContent = "🏆 فزتما بكل المستويات! مجموع النقاط: " + score + " 💗";
+    playSound("win");
+  }
+}
+
+buildLevel();
+
+function rounded(x,y,w,h,r,color){
+ ctx.fillStyle=color;
+ ctx.beginPath();
+ ctx.roundRect(x,y,w,h,r);
+ ctx.fill();
+}
+function circ(x,y,r,color){
+ ctx.fillStyle=color;
+ ctx.beginPath();
+ ctx.arc(x,y,r,0,Math.PI*2);
+ ctx.fill();
+}
+function ellipse(x,y,rx,ry,color){
+ ctx.fillStyle=color;
+ ctx.beginPath();
+ ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);
+ ctx.fill();
+}
+function line(x1,y1,x2,y2,color,width){
+ ctx.strokeStyle=color;
+ ctx.lineWidth=width;
+ ctx.lineCap="round";
+ ctx.beginPath();
+ ctx.moveTo(x1,y1);
+ ctx.lineTo(x2,y2);
+ ctx.stroke();
+}
+
+function drawCloud(x,y,s=1){
+ ctx.save();
+ ctx.translate(x,y);
+ ctx.scale(s,s);
+ circ(0,0,20,"#fff");
+ circ(23,-10,27,"#fff");
+ circ(49,0,20,"#fff");
+ rounded(-12,0,72,19,9,"#fff");
+ ctx.restore();
+}
+
+function background(){
+ const g=ctx.createLinearGradient(0,0,0,540);
+ g.addColorStop(0,"#75cfff");
+ g.addColorStop(1,"#e8f8ff");
+ ctx.fillStyle=g;
+ ctx.fillRect(0,0,960,540);
+ circ(825,82,43,"#ffe78b");
+ drawCloud(110-(camera*.18%1100),110,.9);
+ drawCloud(470-(camera*.18%1100),160,.75);
+ drawCloud(820-(camera*.18%1100),115,.85);
+ for(let i=0;i<9;i++){
+   let hx=i*170-(camera*.32%170);
+   ellipse(hx,470,115,80,"#9bdaa8");
+ }
+}
+
+function drawPlatforms(){
+ platforms.forEach(p=>{
+   let sx=p.x-camera;
+   if(sx+p.w<0||sx>960)return;
+   rounded(sx,p.y,p.w,p.h,8,"#a96d45");
+   rounded(sx,p.y,p.w,13,6,"#61c96e");
+   for(let k=18;k<p.w;k+=42){
+     circ(sx+k,p.y+31,2,"#8d5638");
+   }
+ });
+}
+
+function drawStar(x,y){
+ ctx.save();
+ ctx.translate(x,y);
+ ctx.rotate(Math.sin(tick/18)*.12);
+ ctx.shadowColor="#ffcf38";
+ ctx.shadowBlur=12;
+ ctx.fillStyle="#ffda45";
+ ctx.strokeStyle="#e99a20";
+ ctx.lineWidth=2;
+ ctx.beginPath();
+ for(let i=0;i<10;i++){
+   let a=-Math.PI/2+i*Math.PI/5;
+   let r=i%2===0?13:6;
+   let px=Math.cos(a)*r,py=Math.sin(a)*r;
+   if(i===0)ctx.moveTo(px,py);
+   else ctx.lineTo(px,py);
+ }
+ ctx.closePath();
+ ctx.fill();
+ ctx.stroke();
+ ctx.restore();
+}
+
+function drawStars(){
+ stars.forEach(s=>{
+   if(!s.taken)drawStar(s.x-camera,s.y);
+ });
+}
+
+// Hearts that appear when a star is collected
+function spawnHearts(x,y){
+ for(let i=0;i<7;i++){
+   particles.push({
+     x,y,
+     vx:(Math.random()-.5)*4,
+     vy:-Math.random()*4-1,
+     life:48,
+     size:15+Math.random()*12
+   });
+ }
+}
+
+function updateParticles(){
+ particles.forEach(p=>{
+   p.x+=p.vx;
+   p.y+=p.vy;
+   p.vy+=.06;
+   p.life--;
+ });
+ particles=particles.filter(p=>p.life>0);
+}
+
+function drawParticles(){
+ particles.forEach(p=>{
+   ctx.save();
+   ctx.globalAlpha=Math.min(1,p.life/18);
+   ctx.font=`${p.size}px Arial`;
+   ctx.fillText("💗",p.x-camera,p.y);
+   ctx.restore();
+ });
+}
+
+// Boy character
+function drawBoy(x,y,step){
+ ctx.save();
+ const walking=player.grounded&&(keys.left||keys.right);
+ const swing=walking?Math.sin(step)*4:0;
+ const tuck=player.grounded?0:4;
+ ctx.translate(x,y);
+
+ const hairBounce=player.grounded?
+   Math.abs(Math.sin(tick/7))*1.2:Math.sin(tick/4)*1.5;
+
+ [[10,14],[17,7],[25,6],[33,11],[38,19],[8,25]]
+ .forEach(([a,b])=>circ(a,b+hairBounce,8,"#57301f"));
+
+ circ(10,31,6,"#f0c39f");
+ circ(39,31,6,"#f0c39f");
+ ellipse(25,31+hairBounce*.25,17,21,"#f4cba9");
+
+ [[13,16],[21,12],[29,13],[36,18]]
+ .forEach(([a,b])=>circ(a,b+hairBounce,7,"#57301f"));
+
+ circ(19,31,2.6,"#29213b");
+ circ(31,31,2.6,"#29213b");
+ circ(20,30,.8,"white");
+ circ(32,30,.8,"white");
+
+ ellipse(14,39,3.5,2,"#ed9b9b");
+ ellipse(36,39,3.5,2,"#ed9b9b");
+ line(22,41,25,43,"#a34d54",1.6);
+ line(25,43,29,41,"#a34d54",1.6);
+
+ rounded(20,49,11,8,4,"#f0c39f");
+ rounded(5,54,40,31,9,"#173b86");
+ rounded(1,56,12,17,5,"#a91f4a");
+ rounded(37,56,12,17,5,"#173b86");
+
+ ctx.save();
+ ctx.beginPath();
+ ctx.roundRect(5,54,40,31,9);
+ ctx.clip();
+ for(let i=8;i<48;i+=12){
+   ctx.fillStyle=i%24===8?"#b51f49":"#153d83";
+   ctx.fillRect(i,54,6,31);
+ }
+ ctx.restore();
+
+ line(20,55,25,61,"#f5d15a",2);
+ line(30,55,25,61,"#f5d15a",2);
+
+ circ(37,66,8,"white");
+ if(barcaImg.complete&&barcaImg.naturalWidth){
+   ctx.drawImage(barcaImg,31,58,12,16);
+ }
+
+ // Hand-holding arm
+ line(42,68,57,71,"#f0c39f",8);
+ line(7,68,1-swing*.35,78+Math.abs(swing)*.25,"#f0c39f",7);
+
+ rounded(9,82,32,13,4,"#172b5d");
+
+ if(player.grounded){
+   line(18,92,16+swing,105,"#f0c39f",7);
+   line(33,92,35-swing,105,"#f0c39f",7);
+   rounded(7+swing,101,15,7,4,"#25304e");
+   rounded(29-swing,101,15,7,4,"#25304e");
+ }else{
+   line(18,92,13,99+tuck,"#f0c39f",7);
+   line(33,92,39,99+tuck,"#f0c39f",7);
+   rounded(5,98+tuck,15,7,4,"#25304e");
+   rounded(34,98+tuck,15,7,4,"#25304e");
+ }
+ ctx.restore();
+}
+
+// Girl character
+function drawGirl(x,y,step){
+ ctx.save();
+ const walking=player.grounded&&(keys.left||keys.right);
+ const swing=walking?Math.sin(step)*4:0;
+ const tuck=player.grounded?0:4;
+ ctx.translate(x,y);
+
+ const hairBounce=player.grounded?
+   Math.abs(Math.sin(tick/7))*1.2:Math.sin(tick/4)*1.5;
+
+ [[10,17],[17,9],[26,7],[35,12],[42,20],
+  [8,29],[43,31],[10,43],[42,44]]
+ .forEach(([a,b])=>circ(a,b+hairBounce,8,"#3b211c"));
+
+ circ(10,31,6,"#9b5b3e");
+ circ(39,31,6,"#9b5b3e");
+ ellipse(25,31+hairBounce*.25,17,21,"#ad704f");
+
+ [[13,16],[21,12],[29,13],[36,18]]
+ .forEach(([a,b])=>circ(a,b+hairBounce,7,"#3b211c"));
+
+ circ(19,31,2.7,"#21191a");
+ circ(31,31,2.7,"#21191a");
+ circ(20,30,.8,"white");
+ circ(32,30,.8,"white");
+ line(16,27,14,25,"#21191a",1.2);
+ line(34,27,36,25,"#21191a",1.2);
+
+ ellipse(14,39,3.5,2,"#d98283");
+ ellipse(36,39,3.5,2,"#d98283");
+ line(22,41,25,43,"#713a3c",1.6);
+ line(25,43,29,41,"#713a3c",1.6);
+
+ circ(43,13+hairBounce,4,"#f17ba9");
+ circ(48,10+hairBounce,4,"#f17ba9");
+ circ(45,12+hairBounce,2,"#ffd6e7");
+
+ rounded(20,49,11,8,4,"#9b5b3e");
+ rounded(5,54,40,31,9,"#fbfbff");
+ rounded(1,56,12,17,5,"#f7f7ff");
+ rounded(37,56,12,17,5,"#fff");
+
+ line(7,58,7,82,"#244a9d",2);
+ line(43,58,43,82,"#d5ad42",2);
+ line(20,55,25,61,"#d5ad42",2);
+ line(30,55,25,61,"#d5ad42",2);
+
+ circ(13,66,8,"white");
+ if(realImg.complete&&realImg.naturalWidth){
+   ctx.drawImage(realImg,7,58,12,16);
+ }
+
+ // Hand-holding arm
+ line(7,68,-7,71,"#ad704f",8);
+ line(44,68,50+swing*.35,78+Math.abs(swing)*.25,"#ad704f",7);
+
+ rounded(9,82,32,13,4,"#263e82");
+
+ if(player.grounded){
+   line(18,92,16+swing,105,"#ad704f",7);
+   line(33,92,35-swing,105,"#ad704f",7);
+   rounded(7+swing,101,15,7,4,"#f7f5f2");
+   rounded(29-swing,101,15,7,4,"#f7f5f2");
+ }else{
+   line(18,92,13,99+tuck,"#ad704f",7);
+   line(33,92,39,99+tuck,"#ad704f",7);
+   rounded(5,98+tuck,15,7,4,"#f7f5f2");
+   rounded(34,98+tuck,15,7,4,"#f7f5f2");
+ }
+ ctx.restore();
+}
+
+
+// قطة صغيرة تمشي خلف الثنائي 🐱
+function drawCat() {
+  const screenX = cat.x - camera;
+  const baseY = cat.y;
+  const walking = keys.left || keys.right;
+  const bounce = !player.grounded
+    ? -8 + Math.sin(tick / 3) * 2
+    : (walking ? Math.abs(Math.sin(tick / 3)) * 3 : Math.sin(tick / 12) * 1.2);
+  const tail = Math.sin(tick / 5) * 7;
+
+  ctx.save();
+  ctx.translate(screenX, baseY + bounce);
+
+  // الذيل
+  ctx.strokeStyle = "#f3a85b";
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-7, 26);
+  ctx.quadraticCurveTo(-22, 17 + tail, -17, 7 + tail);
+  ctx.stroke();
+
+  // الجسم والكفوف
+  ellipse(8, 26, 17, 11, "#f4b36b");
+  ellipse(0, 35, 5, 4, "#fff0d8");
+  ellipse(16, 35, 5, 4, "#fff0d8");
+
+  // الرأس والأذنان
+  circ(23, 13, 12, "#f4b36b");
+  ctx.fillStyle = "#f4b36b";
+  ctx.beginPath();
+  ctx.moveTo(14, 7); ctx.lineTo(16, -5); ctx.lineTo(23, 5);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(25, 5); ctx.lineTo(33, -5); ctx.lineTo(34, 10);
+  ctx.closePath(); ctx.fill();
+
+  // الوجه
+  circ(19, 13, 1.8, "#382b35");
+  circ(28, 13, 1.8, "#382b35");
+  circ(23.5, 18, 2, "#e88991");
+  line(21, 21, 24, 23, "#80505a", 1);
+  line(24, 23, 27, 21, "#80505a", 1);
+
+  // شوارب
+  line(13, 18, 5, 16, "#80505a", 1);
+  line(14, 21, 6, 22, "#80505a", 1);
+  line(31, 18, 39, 16, "#80505a", 1);
+  line(31, 21, 39, 22, "#80505a", 1);
+
+  // طوق صغير وجرس
+  line(13, 27, 27, 27, "#8c6bd6", 3);
+  circ(21, 30, 2.3, "#ffe27a");
+  ctx.restore();
+}
+
+// Draw the couple together
+function drawCouple(){
+ const x=Math.round(player.x-camera);
+ const y=Math.round(player.y);
+
+ ctx.save();
+ ctx.translate(x+59,y+50);
+ ctx.rotate(player.rotation||0);
+ ctx.translate(-(x+59),-(y+50));
+
+ const moving=keys.left||keys.right;
+ const bob=player.grounded?
+   (moving?Math.abs(Math.sin(tick/4))*2:Math.sin(tick/13)*1.2):0;
+ const step=moving?tick/3:tick/12;
+ const jumpTilt=player.grounded?0:Math.sin(tick/5)*1.2;
+
+ ellipse(x+59,y+108,player.grounded?55:43,player.grounded?7:5,"#00000022");
+
+ drawBoy(x+3,y+bob+jumpTilt,step);
+ drawGirl(x+65,y+bob+jumpTilt,step);
+
+ // Their hands remain joined
+ circ(x+61,y+70+bob+jumpTilt,6,"#efbd9e");
+ circ(x+65,y+70+bob+jumpTilt,5,"#ad704f");
+
+ if(moving){
+   const sparkle=3+Math.abs(Math.sin(tick/5))*2;
+   circ(x+63,y+59+bob+jumpTilt,sparkle,"#fff1a8");
+ }
+ ctx.restore();
+}
+
+// Main game update
+function update(){
+ if(ended||won)return;
+
+ // القطة تتبع الثنائي مع مسافة صغيرة وتبقى على مستوى الأرض
+ const targetCatX = Math.max(0, player.x - 42);
+ cat.x += (targetCatX - cat.x) * 0.10;
+ cat.y = player.y + 65;
+ cat.bob = Math.sin(tick / 5) * 2;
+
+ // Falling animation
+ if(falling){
+   player.vy+=gravity;
+   player.y+=player.vy;
+   player.rotation+=.12;
+   fallTimer++;
+
+   if(fallTimer>=28){
+     falling=false;
+     player.rotation=0;
+     loseLife();
+   }
+   return;
+ }
+
+ const oldBottom=player.y+player.height;
+
+ if(keys.left)player.x-=player.speed;
+ if(keys.right)player.x+=player.speed;
+
+ player.x=Math.max(0,Math.min(worldWidth-player.width,player.x));
+
+ if(keys.jump&&player.grounded){
+   playSound("jump");
+   player.vy=jumpPower;
+   player.grounded=false;
+ }
+
+ player.vy+=gravity;
+ player.y+=player.vy;
+ player.grounded=false;
+
+ platforms.forEach(p=>{
+   const horizontal=player.x+player.width>p.x&&player.x<p.x+p.w;
+   const bottom=player.y+player.height;
+
+   if(horizontal&&player.vy>=0&&oldBottom<=p.y+7&&bottom>=p.y){
+     player.y=p.y-player.height;
+     player.vy=0;
+     player.grounded=true;
+   }
+ });
+
+ // Move enemies and check collisions
+ updateEnemies();
+ if (ended) return;
+
+ // Collect stars and release hearts
+ stars.forEach(s=>{
+   if(s.taken)return;
+   const dx=player.x+player.width/2-s.x;
+   const dy=player.y+player.height/2-s.y;
+
+   if(Math.hypot(dx,dy)<48){
+     s.taken=true;
+     score+=10;
+     scoreEl.textContent=score;
+     spawnHearts(s.x,s.y);
+     playSound("star");
+     setTimeout(() => playSound("meow"), 260);
+   }
+ });
+
+ // Start falling animation if the couple falls off a platform
+ if(player.y>500){
+   playSound("fall");
+   falling=true;
+   fallTimer=0;
+   player.rotation=0;
+ }
+
+ camera=Math.max(0,Math.min(worldWidth-canvas.width,player.x-390));
+
+ if(player.x>worldWidth-150){
+   nextLevel();
+ }
+}
+
+function loseLife(){
+ lives--;
+ livesEl.textContent=lives;
+
+ if(lives<=0){
+   ended=true;
+   messageEl.textContent="انتهت المحاولات! أعيدي اللعب وحاولي من جديد 💔";
+   return;
+ }
+
+ player.x=Math.max(50,player.x-170);
+ player.y=300;
+ player.vy=0;
+ player.grounded=false;
+ player.rotation=0;
+}
+
+function draw(){
+ background();
+ drawPlatforms();
+ drawEnemies();
+ drawStars();
+ drawParticles();
+ drawCat();
+ drawCouple();
+}
+
+function loop(){
+ tick++;
+ update();
+ updateParticles();
+ draw();
+ requestAnimationFrame(loop);
+}
+
+function restartGame(){
+ cat.x=8;
+ level=1;
+ levelEl.textContent=level;
+ buildLevel();
+ player.x=55;
+ player.y=330;
+ player.vy=0;
+ player.grounded=false;
+ player.rotation=0;
+
+ camera=0;
+ score=0;
+ lives=3;
+ ended=false;
+ won=false;
+ falling=false;
+ fallTimer=0;
+ particles=[];
+
+ makeStars();
+
+ scoreEl.textContent=score;
+ livesEl.textContent=lives;
+ messageEl.textContent="تحركا معًا مع قطتكما الصغيرة 🐱، وتجنبا الأعداء واجمعا النجوم ✨";
+}
+
+// Keyboard controls
+document.addEventListener("keydown",e=>{
+ if (!musicOn) startMusic();
+ const k=e.key.toLowerCase();
+
+ if(["arrowleft","arrowright","arrowup"," "].includes(k)){
+   e.preventDefault();
+ }
+
+ if(k==="arrowleft"||k==="a")keys.left=true;
+ if(k==="arrowright"||k==="d")keys.right=true;
+ if(k==="arrowup"||k===" ")keys.jump=true;
+});
+
+document.addEventListener("keyup",e=>{
+ const k=e.key.toLowerCase();
+
+ if(k==="arrowleft"||k==="a")keys.left=false;
+ if(k==="arrowright"||k==="d")keys.right=false;
+ if(k==="arrowup"||k===" ")keys.jump=false;
+});
+
+// Mobile buttons
+function bindHold(id,key){
+ const el=document.getElementById(id);
+
+ el.addEventListener("pointerdown",e=>{
+   if (!musicOn) startMusic();
+   e.preventDefault();
+   keys[key]=true;
+ });
+
+ ["pointerup","pointerleave","pointercancel"].forEach(ev=>{
+   el.addEventListener(ev,()=>keys[key]=false);
+ });
+}
+
+bindHold("leftBtn","left");
+bindHold("rightBtn","right");
+bindHold("jumpBtn","jump");
+
+loop();
+</script>
+</body>
+</html>
